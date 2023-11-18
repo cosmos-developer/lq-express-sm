@@ -9,6 +9,7 @@ pub struct InstantiateMsg {
 pub enum ExecuteMsg {
     Increment {},
     Reset { count: i32 },
+    Astro {},
 }
 
 #[cw_serde]

@@ -1,8 +1,13 @@
 #[cfg(test)]
 mod tests {
+    use std::marker::PhantomData;
+
     use crate::helpers::CwTemplateContract;
     use crate::msg::InstantiateMsg;
-    use cosmwasm_std::{Addr, Coin, Empty, Uint128};
+    use cosmwasm_std::{
+        testing::{MockApi, MockQuerier, MockStorage},
+        Addr, Coin, Empty, OwnedDeps, Querier, Uint128,
+    };
     use cw_multi_test::{App, AppBuilder, Contract, ContractWrapper, Executor};
 
     pub fn contract_template() -> Box<dyn Contract<Empty>> {
@@ -33,7 +38,15 @@ mod tests {
                 .unwrap();
         })
     }
-
+    fn mock_deps_with_query() -> OwnedDeps<MockStorage, MockApi, MockQuerier, Empty> {
+        let mock_querier = MockQuerier::<Empty>::new(&[]);
+        OwnedDeps {
+            storage: MockStorage::default(),
+            api: MockApi::default(),
+            querier: mock_querier,
+            custom_query_type: PhantomData,
+        }
+    }
     fn proper_instantiate() -> (App, CwTemplateContract) {
         let mut app = mock_app();
         let cw_template_id = app.store_code(contract_template());
