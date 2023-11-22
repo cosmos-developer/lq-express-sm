@@ -76,6 +76,7 @@ pub mod execute {
     }
     pub fn astro_exec(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
         let inj_amount = cw_utils::must_pay(&info, "inj")?.u128();
+
         // Pair of hINJ-INJ on testnet
         let pair = "inj1relf3d6yh2e6arv84gaajawskttdq3vptn8qrs";
         let swap_astro_msg = pair::ExecuteMsg::Swap {
@@ -85,7 +86,7 @@ pub mod execute {
             max_spread: Some(Decimal::percent(50)),
             to: None,
         };
-        assert!(inj_amount > 0);
+
         let exec_cw20_mint_msg = WasmMsg::Execute {
             contract_addr: pair.into(),
             msg: to_json_binary(&swap_astro_msg)?,
