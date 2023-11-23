@@ -1,29 +1,28 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coins, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
+    coins, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdResult,
 };
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, GetCountResponse, InstantiateMsg, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{State, STATE};
-
 use astroport::pair;
+use cosmwasm_std::StdError;
 use cosmwasm_std::WasmMsg;
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:lq-express-sm";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-
+const SWAP_REPLY_ID: u64 = 2u64;
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    msg: InstantiateMsg,
+    _msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     let state = State {
-        count: msg.count,
         owner: info.sender.clone(),
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -31,8 +30,7 @@ pub fn instantiate(
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
-        .add_attribute("owner", info.sender)
-        .add_attribute("count", msg.count.to_string()))
+        .add_attribute("owner", info.sender))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -43,59 +41,86 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Increment {} => execute::increment(deps),
-        ExecuteMsg::Reset { count } => execute::reset(deps, info, count),
-        ExecuteMsg::Astro {} => execute::astro_exec(deps, info),
+        ExecuteMsg::Astro { pair_address } => execute::astro_exec(deps, info, pair_address),
     }
 }
 
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Response> {
+    match msg.id {
+        SWAP_REPLY_ID => handle_swap_reply(deps, _env, msg),
+        id => Err(StdError::generic_err(format!("Unknown reply id: {}", id))),
+    }
+}
+fn handle_swap_reply(_deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Response> {
+    let data = msg.result.into_result().map_err(StdError::generic_err)?;
+
+    // Search for the transfer event
+    // If there are multiple transfers, you will need to find the right event to handle
+    let swap_event = data
+        .events
+        .iter()
+        .find(|e| {
+            e.attributes
+                .iter()
+                .any(|attr| attr.key == "action" && attr.value == "swap")
+                && e.attributes.iter().any(|attr| attr.key == "return_amount")
+        })
+        .ok_or_else(|| StdError::generic_err("unable to find swap action".to_string()))?;
+
+    let _ = swap_event
+        .attributes
+        .iter()
+        .find(|e| e.key == "return_amount")
+        .ok_or_else(|| StdError::generic_err("unable to find coin spent event".to_string()))?;
+
+    // let spender_address = coin_spent_event
+    //     .attributes
+    //     .iter()
+    //     .find(|a| a.key == "spender")
+    //     .unwrap()
+    //     .value
+    //     .clone();
+    // let coin = Coin::from_str(&spend_amount).unwrap();
+    // // transfer back to user
+    // let msg = BankMsg::Send {
+    //     to_address: spender_address,
+    //     amount: vec![coin],
+    // };
+    Ok(Response::new())
+}
 pub mod execute {
     use astroport::asset::Asset;
-    use cosmwasm_std::{Coin, Decimal};
+    use cosmwasm_std::{Decimal, SubMsg};
 
     use super::*;
 
-    pub fn increment(deps: DepsMut) -> Result<Response, ContractError> {
-        STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-            state.count += 1;
-            Ok(state)
-        })?;
-
-        Ok(Response::new().add_attribute("action", "increment"))
-    }
-
-    pub fn reset(deps: DepsMut, info: MessageInfo, count: i32) -> Result<Response, ContractError> {
-        STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-            if info.sender != state.owner {
-                return Err(ContractError::Unauthorized {});
-            }
-            state.count = count;
-            Ok(state)
-        })?;
-        Ok(Response::new().add_attribute("action", "reset"))
-    }
-    pub fn astro_exec(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
-        let inj_amount = cw_utils::must_pay(&info, "inj")?.u128();
+    pub fn astro_exec(
+        _deps: DepsMut,
+        info: MessageInfo,
+        pair_address: String,
+    ) -> Result<Response, ContractError> {
+        let inj_amount = cw_utils::must_pay(&info, "inj").unwrap().u128();
 
         // Pair of hINJ-INJ on testnet
-        let pair = "inj1relf3d6yh2e6arv84gaajawskttdq3vptn8qrs";
         let swap_astro_msg = pair::ExecuteMsg::Swap {
             offer_asset: Asset::native("inj", inj_amount),
             ask_asset_info: None,
             belief_price: None,
             max_spread: Some(Decimal::percent(50)),
-            to: None,
+            to: Some(info.sender.to_string()),
         };
 
         let exec_cw20_mint_msg = WasmMsg::Execute {
-            contract_addr: pair.into(),
+            contract_addr: pair_address.clone(),
             msg: to_json_binary(&swap_astro_msg)?,
             funds: coins(inj_amount, "inj"),
         };
+        let submessage = SubMsg::reply_on_success(exec_cw20_mint_msg, SWAP_REPLY_ID);
         let res = Response::new()
-            .add_message(exec_cw20_mint_msg)
+            .add_submessage(submessage)
             .add_attribute("action", "swap")
-            .add_attribute("pair", pair)
+            .add_attribute("pair", pair_address)
             .add_attribute("offer_asset", "hinj")
             .add_attribute("ask_asset_info", "inj");
         Ok(res)
@@ -103,92 +128,32 @@ pub mod execute {
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
-    match msg {
-        QueryMsg::GetCount {} => to_json_binary(&query::count(deps)?),
-    }
+pub fn query(_deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {}
 }
 
-pub mod query {
-    use super::*;
-
-    pub fn count(deps: Deps) -> StdResult<GetCountResponse> {
-        let state = STATE.load(deps.storage)?;
-        Ok(GetCountResponse { count: state.count })
-    }
-}
+pub mod query {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cosmwasm_std::coins;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::Addr;
-    use cosmwasm_std::{coins, from_json};
     use cw_multi_test::{App, ContractWrapper, Executor};
 
     #[test]
     fn proper_initialization() {
         let mut deps = mock_dependencies();
 
-        let msg = InstantiateMsg { count: 17 };
+        let msg = InstantiateMsg {};
         let info = mock_info("creator", &coins(1000, "earth"));
 
         // we can just call .unwrap() to assert this was a success
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
         assert_eq!(0, res.messages.len());
-
-        // it worked, let's query the state
-        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        let value: GetCountResponse = from_json(&res).unwrap();
-        assert_eq!(17, value.count);
     }
 
-    #[test]
-    fn increment() {
-        let mut deps = mock_dependencies();
-
-        let msg = InstantiateMsg { count: 17 };
-        let info = mock_info("creator", &coins(2, "token"));
-        let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-        // beneficiary can release it
-        let info = mock_info("anyone", &coins(2, "token"));
-        let msg = ExecuteMsg::Increment {};
-        let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-        // should increase counter by 1
-        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        let value: GetCountResponse = from_json(&res).unwrap();
-        assert_eq!(18, value.count);
-    }
-
-    #[test]
-    fn reset() {
-        let mut deps = mock_dependencies();
-
-        let msg = InstantiateMsg { count: 17 };
-        let info = mock_info("creator", &coins(2, "token"));
-        let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-        // beneficiary can release it
-        let unauth_info = mock_info("anyone", &coins(2, "token"));
-        let msg = ExecuteMsg::Reset { count: 5 };
-        let res = execute(deps.as_mut(), mock_env(), unauth_info, msg);
-        match res {
-            Err(ContractError::Unauthorized {}) => {}
-            _ => panic!("Must return unauthorized error"),
-        }
-
-        // only the original creator can reset the counter
-        let auth_info = mock_info("creator", &coins(2, "token"));
-        let msg = ExecuteMsg::Reset { count: 5 };
-        let _res = execute(deps.as_mut(), mock_env(), auth_info, msg).unwrap();
-
-        // should now be 5
-        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        let value: GetCountResponse = from_json(&res).unwrap();
-        assert_eq!(5, value.count);
-    }
     #[test]
     fn astro_test() {
         let mut app = App::new(|router, _, storage| {
@@ -203,17 +168,19 @@ mod tests {
             .instantiate_contract(
                 code_id,
                 Addr::unchecked("user"),
-                &InstantiateMsg { count: 17 },
+                &InstantiateMsg {},
                 &[],
                 "Contract",
                 None,
             )
             .unwrap();
-        let resp = app
+        let _ = app
             .execute_contract(
                 Addr::unchecked("user"),
                 addr,
-                &ExecuteMsg::Astro {},
+                &ExecuteMsg::Astro {
+                    pair_address: "pair".to_string(),
+                },
                 &coins(10, "uinj"),
             )
             .unwrap();
