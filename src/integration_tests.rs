@@ -2,6 +2,7 @@
 #[cfg(test)]
 mod tests {
     use crate::helpers::CwTemplateContract;
+    use crate::msg::ExecuteMsg;
     use crate::msg::InstantiateMsg;
     use astroport::asset::{Asset, AssetInfo, PairInfo};
     use astroport::factory::{InstantiateMsg as FactoryInitMsg, PairConfig, PairType};
@@ -97,6 +98,10 @@ mod tests {
                         },
                         Coin {
                             denom: "ttt".to_string(),
+                            amount: Uint128::new(10_000_000_000_000),
+                        },
+                        Coin {
+                            denom: "abc".to_string(),
                             amount: Uint128::new(10_000_000_000_000),
                         },
                     ],
@@ -196,10 +201,10 @@ mod tests {
         let msg = PairInitMsg {
             asset_infos: [
                 AssetInfo::NativeToken {
-                    denom: "ttt".to_string(),
+                    denom: NATIVE_DENOM.to_string(),
                 },
                 AssetInfo::NativeToken {
-                    denom: NATIVE_DENOM.to_string(),
+                    denom: "ttt".to_string(),
                 },
             ]
             .to_vec(),
@@ -254,15 +259,15 @@ mod tests {
             assets: vec![
                 Asset {
                     info: AssetInfo::NativeToken {
-                        denom: "ttt".to_string(),
-                    },
-                    amount: ttt_amount,
-                },
-                Asset {
-                    info: AssetInfo::NativeToken {
                         denom: "inj".to_string(),
                     },
                     amount: inj_amount,
+                },
+                Asset {
+                    info: AssetInfo::NativeToken {
+                        denom: "ttt".to_string(),
+                    },
+                    amount: ttt_amount,
                 },
             ],
             slippage_tolerance,
@@ -314,6 +319,19 @@ mod tests {
         let ttt_amount = Uint128::new(1_000_000_000000);
         let inj_offer = Uint128::new(1_000000);
 
+        // Add supported pool
+        app.execute_contract(
+            owner.clone(),
+            my_contract.addr(),
+            &ExecuteMsg::AddSupportedPool {
+                pool_address: pair_contract.addr().to_string(),
+                token_1: "inj".into(),
+                token_2: "ttt".into(),
+            },
+            &[],
+        )
+        .unwrap();
+
         let (msg, coins) =
             provide_liquidity_msg(ttt_amount, inj_amount, None, None, &token_contract);
 
@@ -341,11 +359,11 @@ mod tests {
             Some(PairInfo {
                 asset_infos: vec![
                     AssetInfo::NativeToken {
-                        denom: "ttt".to_string()
+                        denom: "inj".to_string()
                     },
                     AssetInfo::NativeToken {
-                        denom: "inj".to_string()
-                    }
+                        denom: "ttt".to_string()
+                    },
                 ],
                 contract_addr: Addr::unchecked("contract4"),
                 liquidity_token: Addr::unchecked("contract5"),
@@ -358,7 +376,7 @@ mod tests {
                 pair_contract.addr(),
                 &PairQueryMsg::AssetBalanceAt {
                     asset_info: AssetInfo::NativeToken {
-                        denom: "inj".to_owned(),
+                        denom: "inj".to_string(),
                     },
                     block_height: app.block_info().height.into(),
                 },
@@ -372,7 +390,7 @@ mod tests {
                 pair_contract.addr(),
                 &PairQueryMsg::AssetBalanceAt {
                     asset_info: AssetInfo::NativeToken {
-                        denom: "ttt".to_owned(),
+                        denom: "ttt".to_string(),
                     },
                     block_height: app.block_info().height.into(),
                 },
@@ -382,7 +400,7 @@ mod tests {
         let swap_msg = PairExecuteMsg::Swap {
             offer_asset: Asset {
                 info: AssetInfo::NativeToken {
-                    denom: "inj".to_owned(),
+                    denom: "inj".to_string(),
                 },
                 amount: Uint128::new(1_000000),
             },
@@ -392,7 +410,7 @@ mod tests {
             to: None,
         };
         let send_funds = vec![Coin {
-            denom: "inj".to_owned(),
+            denom: "inj".to_string(),
             amount: Uint128::new(1_000000),
         }];
         app.execute_contract(owner.clone(), pair_contract.addr(), &swap_msg, &send_funds)
@@ -405,7 +423,7 @@ mod tests {
                 pair_contract.addr(),
                 &PairQueryMsg::AssetBalanceAt {
                     asset_info: AssetInfo::NativeToken {
-                        denom: "ttt".to_owned(),
+                        denom: "ttt".to_string(),
                     },
                     block_height: app.block_info().height.into(),
                 },
@@ -431,7 +449,7 @@ mod tests {
             pair_address: pair_contract.addr().into_string(),
         };
         let send_funds = vec![Coin {
-            denom: "inj".to_owned(),
+            denom: "inj".to_string(),
             amount: Uint128::new(1_000000),
         }];
         app.execute_contract(owner.clone(), my_contract.addr(), &my_swap_msg, &send_funds)
@@ -511,6 +529,18 @@ mod tests {
                 .unwrap()
                 .amount
                 > 0u128.into()
-        )
+        );
+
+        // if wrong pair, return error
+        let my_swap_msg = crate::msg::ExecuteMsg::Astro {
+            pair_address: pair_contract.addr().into_string(),
+        };
+        let send_funds = vec![Coin {
+            denom: "abc".to_owned(),
+            amount: Uint128::new(1_000000),
+        }];
+        assert!(app
+            .execute_contract(owner, pair_contract.addr(), &my_swap_msg, &send_funds)
+            .is_err())
     }
 }

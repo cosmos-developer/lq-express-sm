@@ -16,4 +16,6 @@ pub enum ContractError {
     ExceedMintableBlock {},
     #[error("Exceed maximum mintable amount")]
     ExceedMaximumMintableAmount {},
+    #[error("Pool not exists")]
+    PoolNotExist {},
 }
