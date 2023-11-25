@@ -134,7 +134,6 @@ pub mod execute {
             coin.amount.into()
         };
         let asked_asset = pair_info.1.clone();
-        // Pair of hINJ-INJ on testnet
 
         let swap_astro_msg = pair::ExecuteMsg::Swap {
             offer_asset: Asset::native(&offer_asset, amount),
@@ -149,7 +148,6 @@ pub mod execute {
             msg: to_json_binary(&swap_astro_msg)?,
             funds: coins(amount, &offer_asset),
         };
-        assert!(offer_asset == "inj");
         let submessage = SubMsg::reply_on_success(exec_cw20_mint_msg, SWAP_REPLY_ID);
         let res = Response::new()
             .add_submessage(submessage)
@@ -200,12 +198,12 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
 }
 
 pub mod query {
+    use crate::contract::*;
     use crate::msg::{GetPairResponse, GetPoolAddrResponse};
     use crate::state::POOL_INFO;
-    use crate::{contract::*, error};
     use cosmwasm_std::StdResult;
 
-    pub fn query_pair(deps: Deps, env: Env, pool_address: String) -> StdResult<GetPairResponse> {
+    pub fn query_pair(deps: Deps, _env: Env, pool_address: String) -> StdResult<GetPairResponse> {
         let pair: Vec<_> = POOL_INFO
             .idx
             .address
@@ -228,7 +226,7 @@ pub mod query {
     }
     pub fn query_pool_addr(
         deps: Deps,
-        env: Env,
+        _env: Env,
         token_1: String,
         token_2: String,
     ) -> StdResult<GetPoolAddrResponse> {
@@ -252,7 +250,7 @@ pub mod query {
             .iter()
             .map(|pool_info| pool_info.1.address.to_string().clone())
             .collect::<Vec<_>>();
-        return Ok(GetPoolAddrResponse { pool_addresses });
+        Ok(GetPoolAddrResponse { pool_addresses })
     }
 }
 
@@ -261,7 +259,6 @@ mod tests {
     use crate::msg::GetPairResponse;
 
     use super::*;
-    use cosmwasm_std::coins;
     use cosmwasm_std::Addr;
     use cw_multi_test::{App, ContractWrapper, Executor};
 
