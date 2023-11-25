@@ -17,3 +17,5 @@
 
 # optimization artifacts
 artifacts/
+
+.env
