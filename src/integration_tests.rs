@@ -445,8 +445,8 @@ mod tests {
             .unwrap();
         assert_eq!(res.unwrap(), Uint128::new(1000001000000));
 
-        let my_swap_msg = crate::msg::ExecuteMsg::Astro {
-            pair_address: pair_contract.addr().into_string(),
+        let my_swap_msg = crate::msg::ExecuteMsg::MySwap {
+            pool_address: pair_contract.addr(),
         };
         let send_funds = vec![Coin {
             denom: "inj".to_string(),
@@ -490,8 +490,8 @@ mod tests {
                 .amount,
             Uint128::from(1_000000u128)
         );
-        let my_swap_msg = crate::msg::ExecuteMsg::Astro {
-            pair_address: pair_contract.addr().into_string(),
+        let my_swap_msg = crate::msg::ExecuteMsg::MySwap {
+            pool_address: pair_contract.addr(),
         };
         let send_funds = vec![Coin {
             denom: "inj".to_owned(),
@@ -532,8 +532,8 @@ mod tests {
         );
 
         // if wrong pair, return error
-        let my_swap_msg = crate::msg::ExecuteMsg::Astro {
-            pair_address: pair_contract.addr().into_string(),
+        let my_swap_msg = crate::msg::ExecuteMsg::MySwap {
+            pool_address: pair_contract.addr(),
         };
         let send_funds = vec![Coin {
             denom: "abc".to_owned(),

@@ -1,9 +1,9 @@
+use astroport::{pair::PoolResponse, querier};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{to_json_binary, Addr, CosmosMsg, StdResult, WasmMsg};
-
 use crate::msg::ExecuteMsg;
+use cosmwasm_std::{to_json_binary, Addr, CosmosMsg, QuerierWrapper, StdResult, WasmMsg};
 
 /// CwTemplateContract is a wrapper around Addr that provides a lot of helpers
 /// for working with this.

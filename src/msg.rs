@@ -1,4 +1,6 @@
+use astroport::asset::AssetInfo;
 use cosmwasm_schema::{cw_serde, QueryResponses};
+use cosmwasm_std::Addr;
 
 #[cw_serde]
 pub struct InstantiateMsg {}
@@ -12,6 +14,9 @@ pub enum ExecuteMsg {
         pool_address: String,
         token_1: String,
         token_2: String,
+    },
+    MySwap {
+        pool_address: Addr,
     },
 }
 

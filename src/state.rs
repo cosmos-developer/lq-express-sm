@@ -41,3 +41,7 @@ pub struct PoolInfo {
 }
 pub const STATE: Item<State> = Item::new("state");
 pub const POOL_INFO: IndexedMap<&str, PoolInfo, InfoIndexes> = infos();
+pub const POOL_CONTRACT_ADDR: Item<Addr> = Item::new("pool_contract_addr");
+pub const REGISTRY_CONTRACT_ADDR: Item<Addr> = Item::new("registry_contract_addr");
+pub const FACTORY_CONTRACT_ADDR: Item<Addr> = Item::new("factory_contract_addr");
+pub const PAIR_CONTRACT_ADDR: Item<Addr> = Item::new("pair_contract_addr");

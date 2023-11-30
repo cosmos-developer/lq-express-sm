@@ -18,4 +18,6 @@ pub enum ContractError {
     ExceedMaximumMintableAmount {},
     #[error("Pool not exists")]
     PoolNotExist {},
+    #[error("Offer and ask token should not be identical")]
+    DoublingAssets {},
 }
