@@ -225,7 +225,7 @@ mod tests {
     }
     fn instantiate_my_contract(app: &mut App) -> CwTemplateContract {
         let my_contract_id = app.store_code(my_contract());
-        let msg = InstantiateMsg {};
+        let msg = InstantiateMsg { fee_rate: 5 };
         let my_contract_addr = app
             .instantiate_contract(
                 my_contract_id,
@@ -291,7 +291,7 @@ mod tests {
         let mut app = mock_app();
         let cw_template_id = app.store_code(contract_template());
         let pair_id = app.store_code(pair_contract());
-        let msg = InstantiateMsg {};
+        let msg = InstantiateMsg { fee_rate: 5 };
         let cw_template_contract_addr = app
             .instantiate_contract(
                 cw_template_id,
@@ -454,7 +454,7 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(res.unwrap(), Uint128::new(999998006002));
+        assert_eq!(res.unwrap(), Uint128::new(999998006501));
 
         // let another user do swap
 
@@ -498,7 +498,7 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(res.unwrap(), Uint128::new(999997009006));
+        assert_eq!(res.unwrap(), Uint128::new(999997010004));
 
         // Check current balance of user
         assert_eq!(

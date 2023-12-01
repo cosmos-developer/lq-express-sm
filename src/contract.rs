@@ -7,7 +7,7 @@ use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{State, STATE};
+use crate::state::{State, FEE_RATE, STATE};
 use astroport::asset::AssetInfo;
 use astroport::pair::{self};
 use cosmwasm_std::{Addr, Order, StdError, WasmMsg};
@@ -21,13 +21,14 @@ pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    _msg: InstantiateMsg,
+    msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     let state = State {
         owner: info.sender.clone(),
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
+    FEE_RATE.save(deps.storage, &msg.fee_rate)?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
@@ -77,19 +78,7 @@ fn handle_swap_reply(_deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Respons
         .iter()
         .find(|e| e.key == "return_amount")
         .ok_or_else(|| StdError::generic_err("unable to find coin spent event".to_string()))?;
-    // let spender_address = coin_spent_event
-    //     .attributes
-    //     .iter()
-    //     .find(|a| a.key == "spender")
-    //     .unwrap()
-    //     .value
-    //     .clone();
-    // let coin = Coin::from_str(&spend_amount).unwrap();
-    // // transfer back to user
-    // let msg = BankMsg::Send {
-    //     to_address: spender_address,
-    //     amount: vec![coin],
-    // };
+
     Ok(Response::new())
 }
 
@@ -211,8 +200,12 @@ pub mod execute {
             asset_infos[0].to_string()
         };
 
+        // Fee deduction bank
+        let fee_rate = FEE_RATE.load(deps.storage)?;
+        let fee = amount * fee_rate as u128 / 10000;
+
         let swap_astro_msg = pair::ExecuteMsg::Swap {
-            offer_asset: Asset::native(&offer_asset, amount),
+            offer_asset: Asset::native(&offer_asset, amount - fee),
             ask_asset_info: None,
             belief_price: None,
             max_spread: Some(Decimal::percent(50)),
@@ -221,9 +214,10 @@ pub mod execute {
         let exec_cw20_mint_msg = WasmMsg::Execute {
             contract_addr: pool_address.clone().to_string(),
             msg: to_json_binary(&swap_astro_msg)?,
-            funds: coins(amount, &offer_asset),
+            funds: coins(amount - fee, &offer_asset),
         };
         let submessage = SubMsg::reply_on_success(exec_cw20_mint_msg, SWAP_REPLY_ID);
+
         let res = Response::new()
             .add_submessage(submessage)
             .add_attribute("action", "swap")
