@@ -86,7 +86,7 @@ pub mod execute {
     use astroport::{asset::Asset, pair::PoolResponse};
     use cosmwasm_std::{Decimal, SubMsg};
 
-    use crate::state::{PoolInfo, POOL_INFO};
+    use crate::state::POOL_INFO;
 
     use super::*;
 
@@ -116,16 +116,16 @@ pub mod execute {
         let offer_asset = coin.denom.clone();
         let amount: u128 = if offer_asset != pair_info.0 && offer_asset != pair_info.1 {
             return Err(ContractError::Payment(
-                cw_utils::PaymentError::MissingDenom(coin.denom.to_string()),
+                cw_utils::PaymentError::MissingDenom(coin.denom),
             ));
         } else {
             coin.amount.into()
         };
 
         let asked_asset = if pair_info.0 == offer_asset {
-            pair_info.1.clone()
+            pair_info.1
         } else {
-            pair_info.0.clone()
+            pair_info.0
         };
 
         let swap_astro_msg = pair::ExecuteMsg::Swap {
@@ -181,7 +181,7 @@ pub mod execute {
         };
         let amount: u128 = if !offer.equal(&asset_infos[0]) && !offer.equal(&asset_infos[1]) {
             return Err(ContractError::Payment(
-                cw_utils::PaymentError::MissingDenom(coin.denom.to_string()),
+                cw_utils::PaymentError::MissingDenom(coin.denom),
             ));
         } else {
             coin.amount.into()
@@ -212,7 +212,7 @@ pub mod execute {
             to: Some(info.sender.to_string()),
         };
         let exec_cw20_mint_msg = WasmMsg::Execute {
-            contract_addr: pool_address.clone().to_string(),
+            contract_addr: pool_address.to_string(),
             msg: to_json_binary(&swap_astro_msg)?,
             funds: coins(amount - fee, &offer_asset),
         };
@@ -226,36 +226,7 @@ pub mod execute {
             .add_attribute("ask_asset_info", asked_asset);
         Ok(res)
     }
-    pub fn add_supported_pool(
-        deps: DepsMut,
-        _info: MessageInfo,
-        pool_address: String,
-        token_1: String,
-        token_2: String,
-    ) -> Result<Response, ContractError> {
-        // // Check authorization
-        // if info.sender != STATE.load(deps.storage)?.owner {
-        //     return Err(ContractError::Unauthorized {});
-        // }
-        let pool_info = PoolInfo {
-            address: Addr::unchecked(pool_address),
-            token_1: token_1.clone(),
-            token_2: token_2.clone(),
-        };
-        POOL_INFO.save(
-            deps.storage,
-            [token_1.clone(), token_2.clone()].join("_").as_str(),
-            &pool_info,
-        )?;
-
-        Ok(Response::new()
-            .add_attribute("method", "add_supported_pool")
-            .add_attribute("pool_address", pool_info.address)
-            .add_attribute("token 1", token_1)
-            .add_attribute("token2", token_2))
-    }
 }
-
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(_deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {}

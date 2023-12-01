@@ -3,6 +3,7 @@ use cosmwasm_std::Addr;
 
 #[cw_serde]
 pub struct InstantiateMsg {
+    // Fee for each swap, max 10000 equals 100%
     pub fee_rate: u64,
 }
 
