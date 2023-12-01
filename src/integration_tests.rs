@@ -2,7 +2,6 @@
 #[cfg(test)]
 mod tests {
     use crate::helpers::CwTemplateContract;
-    use crate::msg::ExecuteMsg;
     use crate::msg::InstantiateMsg;
     use astroport::asset::{Asset, AssetInfo, PairInfo};
     use astroport::factory::{InstantiateMsg as FactoryInitMsg, PairConfig, PairType};
@@ -318,19 +317,6 @@ mod tests {
         let inj_amount = Uint128::new(1_000_000_000000);
         let ttt_amount = Uint128::new(1_000_000_000000);
         let inj_offer = Uint128::new(1_000000);
-
-        // Add supported pool
-        app.execute_contract(
-            owner.clone(),
-            my_contract.addr(),
-            &ExecuteMsg::AddSupportedPool {
-                pool_address: pair_contract.addr().to_string(),
-                token_1: "inj".into(),
-                token_2: "ttt".into(),
-            },
-            &[],
-        )
-        .unwrap();
 
         let (msg, coins) =
             provide_liquidity_msg(ttt_amount, inj_amount, None, None, &token_contract);

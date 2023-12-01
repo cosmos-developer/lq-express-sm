@@ -12,7 +12,6 @@ use astroport::asset::AssetInfo;
 use astroport::pair::{self};
 use cosmwasm_std::{Addr, Order, StdError, WasmMsg};
 
-use self::query::*;
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:lq-express-sm";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -44,11 +43,6 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::Astro { pair_address } => execute::astro_exec(deps, info, pair_address),
-        ExecuteMsg::AddSupportedPool {
-            pool_address,
-            token_1,
-            token_2,
-        } => execute::add_supported_pool(deps, info, pool_address, token_1, token_2),
         ExecuteMsg::MySwap { pool_address } => execute::swap(deps, info, pool_address),
     }
 }
@@ -100,14 +94,10 @@ fn handle_swap_reply(_deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Respons
 }
 
 pub mod execute {
-    use astroport::{
-        asset::{Asset, PairInfo},
-        factory,
-        pair::PoolResponse,
-    };
+    use astroport::{asset::Asset, pair::PoolResponse};
     use cosmwasm_std::{Decimal, SubMsg};
 
-    use crate::state::{PoolInfo, FACTORY_CONTRACT_ADDR, POOL_CONTRACT_ADDR, POOL_INFO};
+    use crate::state::{PoolInfo, POOL_INFO};
 
     use super::*;
 
@@ -143,12 +133,11 @@ pub mod execute {
             coin.amount.into()
         };
 
-        let asked_asset: String;
-        if pair_info.0 == offer_asset {
-            asked_asset = pair_info.1.clone();
+        let asked_asset = if pair_info.0 == offer_asset {
+            pair_info.1.clone()
         } else {
-            asked_asset = pair_info.0.clone();
-        }
+            pair_info.0.clone()
+        };
 
         let swap_astro_msg = pair::ExecuteMsg::Swap {
             offer_asset: Asset::native(&offer_asset, amount),
@@ -216,12 +205,11 @@ pub mod execute {
             return Err(ContractError::Unauthorized {});
         }
 
-        let asked_asset: String;
-        if offer.equal(&asset_infos[0]) {
-            asked_asset = asset_infos[1].to_string();
+        let asked_asset = if offer.equal(&asset_infos[0]) {
+            asset_infos[1].to_string()
         } else {
-            asked_asset = asset_infos[0].to_string();
-        }
+            asset_infos[0].to_string()
+        };
 
         let swap_astro_msg = pair::ExecuteMsg::Swap {
             offer_asset: Asset::native(&offer_asset, amount),
@@ -246,7 +234,7 @@ pub mod execute {
     }
     pub fn add_supported_pool(
         deps: DepsMut,
-        info: MessageInfo,
+        _info: MessageInfo,
         pool_address: String,
         token_1: String,
         token_2: String,
@@ -275,122 +263,22 @@ pub mod execute {
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
-    match msg {
-        QueryMsg::GetPair { pool_address } => to_json_binary(&query_pair(deps, env, pool_address)?),
-        QueryMsg::GetPoolAddr { token_1, token_2 } => {
-            to_json_binary(&query_pool_addr(deps, env, token_1, token_2)?)
-        }
-    }
+pub fn query(_deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {}
 }
 
-pub mod query {
-    use crate::contract::*;
-    use crate::msg::{GetPairResponse, GetPoolAddrResponse};
-    use crate::state::POOL_INFO;
-    use cosmwasm_std::StdResult;
+// pub mod query {
+//     use crate::contract::*;
+//     use crate::msg::{GetPairResponse, GetPoolAddrResponse};
+//     use crate::state::POOL_INFO;
+//     use cosmwasm_std::StdResult;
+// }
 
-    pub fn query_pair(deps: Deps, _env: Env, pool_address: String) -> StdResult<GetPairResponse> {
-        let pair: Vec<_> = POOL_INFO
-            .idx
-            .address
-            .prefix(pool_address)
-            .range(deps.storage, None, None, Order::Ascending)
-            .flatten()
-            .collect();
-        if pair.is_empty() {
-            return Err(StdError::GenericErr {
-                msg: "pool address not found".to_string(),
-            });
-        }
-        let (token_1, token_2): (String, String) = pair
-            .first()
-            .iter()
-            .map(|pair| (pair.1.token_1.clone(), pair.1.token_2.clone()))
-            .unzip();
-        let resp = GetPairResponse { token_1, token_2 };
-        Ok(resp)
-    }
-    pub fn query_pool_addr(
-        deps: Deps,
-        _env: Env,
-        token_1: String,
-        token_2: String,
-    ) -> StdResult<GetPoolAddrResponse> {
-        let token_1 = token_1.to_lowercase();
-        let token_2 = token_2.to_lowercase();
+// #[cfg(test)]
+// mod tests {
+//     use crate::msg::GetPairResponse;
 
-        let pools = POOL_INFO
-            .idx
-            .pair
-            .prefix((token_1, token_2))
-            .range(deps.storage, None, None, Order::Ascending)
-            .flatten()
-            .collect::<Vec<_>>();
-
-        if pools.is_empty() {
-            return Err(StdError::GenericErr {
-                msg: "No pool exist for this pair yet".to_string(),
-            });
-        }
-        let pool_addresses = pools
-            .iter()
-            .map(|pool_info| pool_info.1.address.to_string().clone())
-            .collect::<Vec<_>>();
-        Ok(GetPoolAddrResponse { pool_addresses })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::msg::GetPairResponse;
-
-    use super::*;
-    use cosmwasm_std::Addr;
-    use cw_multi_test::{App, ContractWrapper, Executor};
-
-    #[test]
-    fn test_add_pool() {
-        let mut app = App::default();
-        let owner = Addr::unchecked("owner");
-        let code = ContractWrapper::new(execute, instantiate, query);
-        let code_id = app.store_code(Box::new(code));
-
-        let addr = app
-            .instantiate_contract(
-                code_id,
-                owner.clone(),
-                &InstantiateMsg {},
-                &[],
-                "Contract",
-                None,
-            )
-            .unwrap();
-        let msg = ExecuteMsg::AddSupportedPool {
-            pool_address: "pool1".to_string(),
-            token_1: "inj".to_string(),
-            token_2: "atom".to_string(),
-        };
-        app.execute_contract(owner.clone(), addr.clone(), &msg, &[])
-            .unwrap();
-
-        app.update_block(|b| b.height += 1);
-
-        let resp: GetPairResponse = app
-            .wrap()
-            .query_wasm_smart(
-                addr.clone(),
-                &QueryMsg::GetPair {
-                    pool_address: "pool1".to_string(),
-                },
-            )
-            .unwrap();
-        assert_eq!(
-            resp,
-            GetPairResponse {
-                token_1: "inj".to_string(),
-                token_2: "atom".to_string()
-            }
-        )
-    }
-}
+//     use super::*;
+//     use cosmwasm_std::Addr;
+//     use cw_multi_test::{App, ContractWrapper, Executor};
+// }
