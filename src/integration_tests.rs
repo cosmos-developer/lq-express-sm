@@ -308,7 +308,7 @@ mod tests {
     }
     #[allow(unused_variables, clippy::inconsistent_digit_grouping)]
     #[test]
-    fn instantiate_and_query() {
+    fn instantiate_and_query_happy_path() {
         let owner = Addr::unchecked(ADMIN);
         let user = Addr::unchecked(USER);
         let (mut app, cw_contract) = proper_instantiate();
@@ -316,7 +316,7 @@ mod tests {
         let my_contract = instantiate_my_contract(&mut app);
         let inj_amount = Uint128::new(1_000_000_000000);
         let ttt_amount = Uint128::new(1_000_000_000000);
-        let inj_offer = Uint128::new(1_000000);
+        let inj_offer = Uint128::new(1_000_000);
 
         let (msg, coins) =
             provide_liquidity_msg(ttt_amount, inj_amount, None, None, &token_contract);
@@ -383,23 +383,14 @@ mod tests {
             )
             .unwrap();
         assert_eq!(res.unwrap(), Uint128::new(1_000_000_000000));
-        let swap_msg = PairExecuteMsg::Swap {
-            offer_asset: Asset {
-                info: AssetInfo::NativeToken {
-                    denom: "inj".to_string(),
-                },
-                amount: Uint128::new(1_000000),
-            },
-            ask_asset_info: None,
-            belief_price: None,
-            max_spread: None,
-            to: None,
+        let swap_msg = crate::msg::ExecuteMsg::MySwap {
+            pool_address: pair_contract.addr(),
         };
         let send_funds = vec![Coin {
             denom: "inj".to_string(),
             amount: Uint128::new(1_000000),
         }];
-        app.execute_contract(owner.clone(), pair_contract.addr(), &swap_msg, &send_funds)
+        app.execute_contract(owner.clone(), my_contract.addr(), &swap_msg, &send_funds)
             .unwrap();
         app.update_block(|b| b.height += 1);
         // Check pool balances
@@ -415,7 +406,7 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(res.unwrap(), Uint128::new(999999003000));
+        assert_eq!(res.unwrap(), Uint128::new(999999003499));
         // Check pool balances
         let res: Option<Uint128> = app
             .wrap()
@@ -429,104 +420,30 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(res.unwrap(), Uint128::new(1000001000000));
-
-        let my_swap_msg = crate::msg::ExecuteMsg::MySwap {
-            pool_address: pair_contract.addr(),
-        };
-        let send_funds = vec![Coin {
-            denom: "inj".to_string(),
-            amount: Uint128::new(1_000000),
-        }];
-        app.execute_contract(owner.clone(), my_contract.addr(), &my_swap_msg, &send_funds)
-            .unwrap();
-        app.update_block(|b| b.height += 1);
-        // Check pool balances
-        let res: Option<Uint128> = app
-            .wrap()
-            .query_wasm_smart(
-                pair_contract.addr(),
-                &PairQueryMsg::AssetBalanceAt {
-                    asset_info: AssetInfo::NativeToken {
-                        denom: "ttt".to_owned(),
-                    },
-                    block_height: app.block_info().height.into(),
-                },
-            )
-            .unwrap();
-        assert_eq!(res.unwrap(), Uint128::new(999998006501));
-
-        // let another user do swap
-
-        // Distribute token from admin to user
-        app.send_tokens(
-            owner.clone(),
-            user.clone(),
-            &[Coin {
-                denom: "inj".to_string(),
-                amount: Uint128::from(1_000000u128),
-            }],
-        )
-        .unwrap();
-        app.update_block(|b| b.height += 1);
+        assert_eq!(res.unwrap(), Uint128::new(1000000999500));
+        // Check current balance of owner
         assert_eq!(
             app.wrap()
-                .query_balance(user.clone(), "inj")
+                .query_balance(owner.clone(), "inj")
                 .unwrap()
                 .amount,
-            Uint128::from(1_000000u128)
+            Uint128::from(9_000_000_000_000u128)
         );
-        let my_swap_msg = crate::msg::ExecuteMsg::MySwap {
-            pool_address: pair_contract.addr(),
-        };
-        let send_funds = vec![Coin {
-            denom: "inj".to_owned(),
-            amount: Uint128::new(1_000000),
-        }];
-        app.execute_contract(user.clone(), my_contract.addr(), &my_swap_msg, &send_funds)
-            .unwrap();
-        app.update_block(|b| b.height += 1);
-        let res: Option<Uint128> = app
-            .wrap()
-            .query_wasm_smart(
-                pair_contract.addr(),
-                &PairQueryMsg::AssetBalanceAt {
-                    asset_info: AssetInfo::NativeToken {
-                        denom: "ttt".to_owned(),
-                    },
-                    block_height: app.block_info().height.into(),
-                },
-            )
-            .unwrap();
-        assert_eq!(res.unwrap(), Uint128::new(999997010004));
-
-        // Check current balance of user
+        // Check if owner receive token from pool
         assert_eq!(
             app.wrap()
-                .query_balance(user.clone(), "inj")
+                .query_balance(owner.clone(), "ttt")
                 .unwrap()
                 .amount,
-            Uint128::from(0u128)
+            Uint128::from(9000000996501u128)
         );
-        // Check if user receive token from pool
-        assert!(
+        // Check if contract collected fee
+        assert_eq!(
             app.wrap()
-                .query_balance(user.clone(), "ttt")
+                .query_balance(my_contract.addr(), "inj")
                 .unwrap()
-                .amount
-                > 0u128.into()
+                .amount,
+            Uint128::from(500u128)
         );
-
-        // if wrong pair, return error
-        let my_swap_msg = crate::msg::ExecuteMsg::MySwap {
-            pool_address: pair_contract.addr(),
-        };
-        let send_funds = vec![Coin {
-            denom: "abc".to_owned(),
-            amount: Uint128::new(1_000000),
-        }];
-        assert!(app
-            .execute_contract(owner, pair_contract.addr(), &my_swap_msg, &send_funds)
-            .is_err())
     }
 }
