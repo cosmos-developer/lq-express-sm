@@ -1,7 +1,8 @@
 use cosmwasm_std::StdError;
+use cosmwasm_std::Uint128;
 use cw_utils::PaymentError;
 use thiserror::Error;
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
@@ -20,4 +21,9 @@ pub enum ContractError {
     PoolNotExist {},
     #[error("Offer and ask token should not be identical")]
     DoublingAssets {},
+    #[error("Insufficient funds available in the pool to complete the swap: {asked_amount} > {available_amount}")]
+    InsufficientFunds {
+        asked_amount: Uint128,
+        available_amount: Uint128,
+    },
 }

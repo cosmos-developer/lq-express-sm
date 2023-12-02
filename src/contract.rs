@@ -189,9 +189,11 @@ pub mod execute {
 
         // Precheck if enough balance in pool for user swap request
         let available_offer = offer.query_pool(&deps.querier, pool_address.clone())?;
-        // TODO: Use a better error type
         if available_offer < amount.into() {
-            return Err(ContractError::Unauthorized {});
+            return Err(ContractError::InsufficientFunds {
+                asked_amount: amount.into(),
+                available_amount: available_offer,
+            });
         }
 
         let asked_asset = if offer.equal(&asset_infos[0]) {

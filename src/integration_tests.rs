@@ -446,4 +446,76 @@ mod tests {
             Uint128::from(500u128)
         );
     }
+    #[test]
+    fn test_pool_insufficient_balance_for_swap() {
+        let owner = Addr::unchecked(ADMIN);
+        let user = Addr::unchecked(USER);
+        let (mut app, cw_contract) = proper_instantiate();
+        let (token_contract, factory_contract, pair_contract) = instantiate_contracts(&mut app);
+        let my_contract = instantiate_my_contract(&mut app);
+        let inj_amount = Uint128::new(1_000_000);
+        let ttt_amount = Uint128::new(1_000_000);
+        let inj_offer = Uint128::new(10_000_000);
+
+        let (msg, coins) =
+            provide_liquidity_msg(ttt_amount, inj_amount, None, None, &token_contract);
+
+        app.execute_contract(owner.clone(), pair_contract.addr(), &msg, &coins)
+            .unwrap();
+        // Enable pool balance tracking
+        let msg = PairExecuteMsg::UpdateConfig {
+            params: to_json_binary(&XYKPoolUpdateParams::EnableAssetBalancesTracking).unwrap(),
+        };
+        app.execute_contract(owner.clone(), pair_contract.addr(), &msg, &[])
+            .unwrap();
+
+        app.update_block(|b| b.height += 1);
+
+        // Check pool balances
+        let res: Option<Uint128> = app
+            .wrap()
+            .query_wasm_smart(
+                pair_contract.addr(),
+                &PairQueryMsg::AssetBalanceAt {
+                    asset_info: AssetInfo::NativeToken {
+                        denom: "ttt".to_string(),
+                    },
+                    block_height: app.block_info().height.into(),
+                },
+            )
+            .unwrap();
+        assert_eq!(res.unwrap(), Uint128::new(1_000_000));
+        // Check pool balances
+        let res: Option<Uint128> = app
+            .wrap()
+            .query_wasm_smart(
+                pair_contract.addr(),
+                &PairQueryMsg::AssetBalanceAt {
+                    asset_info: AssetInfo::NativeToken {
+                        denom: "inj".to_owned(),
+                    },
+                    block_height: app.block_info().height.into(),
+                },
+            )
+            .unwrap();
+        assert_eq!(res.unwrap(), Uint128::new(1_000_000));
+        // Perform swap of two native tokens
+        let swap_msg = crate::msg::ExecuteMsg::MySwap {
+            pool_address: pair_contract.addr(),
+        };
+        let send_funds = vec![Coin {
+            denom: "inj".to_string(),
+            amount: inj_offer,
+        }];
+        let res = app
+            .execute_contract(owner.clone(), my_contract.addr(), &swap_msg, &send_funds)
+            .unwrap_err();
+        assert_eq!(
+            crate::error::ContractError::InsufficientFunds {
+                asked_amount: inj_offer,
+                available_amount: Uint128::new(1_000_000)
+            },
+            res.downcast().unwrap(),
+        );
+    }
 }
